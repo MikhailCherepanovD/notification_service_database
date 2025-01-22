@@ -1,3 +1,6 @@
+ALTER TABLE users
+DROP CONSTRAINT unique_login1;
+
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS route_monitoring CASCADE ;
 DROP TABLE IF EXISTS users_route_monitoring CASCADE;
@@ -15,9 +18,9 @@ CREATE TABLE users(
 
 CREATE TABLE route_monitoring(
 	route_monitoring_id SERIAL PRIMARY KEY,
-	type_of_route varchar(50),
-	start_point varchar(50),
-	finish_point varchar(50),
+	type_of_route_id INT,
+	start_point_id INT,
+	finish_point_id INT,
 	start_time_monitoring varchar(50),
 	finish_time_monitoring varchar(50)
 );
@@ -28,8 +31,65 @@ CREATE TABLE users_route_monitoring(
 	PRIMARY KEY (users_id, route_monitoring_id)
 );
 
+
+CREATE TABLE point(
+	point_id SERIAL PRIMARY KEY,
+	city_name varchar(50),
+	IATA_code varchar(5)
+);
+
+
+CREATE TABLE type_of_route(
+	type_of_route_id SERIAL PRIMARY KEY,
+	type_name varchar(50)
+);
+
+
+
+ALTER TABLE users_route_monitoring
+    ADD FOREIGN KEY (users_id) REFERENCES users(users_id)
+		ON UPDATE CASCADE ON DELETE CASCADE,
+    ADD FOREIGN KEY (route_monitoring_id) REFERENCES route_monitoring(route_monitoring_id)
+		ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+ALTER TABLE route_monitoring
+    ADD FOREIGN KEY (type_of_route_id) REFERENCES type_of_route(type_of_route_id)
+		ON UPDATE CASCADE ON DELETE CASCADE,
+    ADD FOREIGN KEY (start_point_id) REFERENCES point(point_id)
+		ON UPDATE CASCADE ON DELETE CASCADE,
+	ADD FOREIGN KEY (finish_point_id) REFERENCES point(point_id)
+		ON UPDATE CASCADE ON DELETE CASCADE;
+
 ALTER TABLE users
 ADD CONSTRAINT unique_login1 UNIQUE (login);
+
+
+
+
+CREATE INDEX users___users_id_idx ON users(users_id);
+
+CREATE INDEX users_route_monitoring___users_id_idx ON users_route_monitoring (users_id);
+CREATE INDEX users_route_monitoring___type_of_route_id_idx ON users_route_monitoring (route_monitoring_id);
+
+CREATE INDEX route_monitoring___route_monitoring_id_idx ON route_monitoring (route_monitoring_id);
+CREATE INDEX route_monitoring___type_of_route_id_idx ON route_monitoring (type_of_route_id);
+CREATE INDEX route_monitoring___start_point_id_idx ON route_monitoring (start_point_id);
+CREATE INDEX route_monitoring___finish_point_id_idx ON route_monitoring (finish_point_id);
+
+CREATE INDEX point___point_id_idx ON point (point_id);
+
+CREATE INDEX type_of_route___type_of_route_id_idx ON type_of_route (type_of_route_id);
+
+
+
+
+
+
+
+
+
+
 
 
 CREATE OR REPLACE FUNCTION update_or_insert_users( --0 - конфликт на логинах, 1 - значение вставлено, 2 - значение обновлено
@@ -68,3 +128,10 @@ BEGIN
 	RETURN returned_value;
 END;
 $$ LANGUAGE plpgsql;
+
+
+
+
+
+
+
