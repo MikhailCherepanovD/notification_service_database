@@ -7,7 +7,6 @@ DROP TABLE IF EXISTS ticket_data CASCADE;
 DROP TABLE IF EXISTS route CASCADE;
 DROP TABLE IF EXISTS location CASCADE;
 DROP TABLE IF EXISTS type_of_route CASCADE;
-DROP FUNCTION IF exists update_or_insert_users;
 
 CREATE TABLE users(
 	users_id SERIAL PRIMARY KEY,
@@ -45,9 +44,8 @@ CREATE TABLE route(
 
 CREATE TABLE location(
 	location_id SERIAL PRIMARY KEY,
-	type_of_route_id INT,
-	start_point_id INT,
-	finish_point_id INT
+	city_name varchar(50),
+	IATA_code varchar(50)
 );
 
 CREATE TABLE type_of_route(
@@ -99,40 +97,5 @@ CREATE INDEX location___location_id_idx ON location(location_id);
 
 
 
-CREATE OR REPLACE FUNCTION update_or_insert_users( --0 - конфликт на логинах, 1 - значение вставлено, 2 - значение обновлено
-    p_users_id INT,
-    p_login TEXT,
-    p_password TEXT,
-    p_user_name TEXT,
-    p_email TEXT,
-    p_telegram TEXT
-) RETURNS INT AS $$
-DECLARE
-    returned_value INT;
-BEGIN
-	BEGIN
-	  	IF NOT EXISTS(
-			SELECT 1 FROM users WHERE users.users_id=p_users_id
-		)
-		THEN 
-			INSERT INTO users (users_id, login, password, user_name, email, telegram)
-			VALUES (p_users_id, p_login, p_password, p_user_name, p_email, p_telegram);
-			returned_value = 1;
-		ELSE
-			UPDATE users SET 
-				login = p_login,
-				password = p_password,
-				user_name = p_user_name,
-				email = p_email,
-				telegram=p_telegram
-			WHERE users_id=p_users_id;
-			returned_value=2;
-		END IF;
-	EXCEPTION
-        WHEN unique_violation THEN
-			returned_value=0;
-	END;
-	RETURN returned_value;
-END;
-$$ LANGUAGE plpgsql;
+
 
