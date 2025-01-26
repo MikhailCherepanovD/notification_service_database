@@ -2,7 +2,7 @@ DROP FUNCTION IF EXISTS insert_data_journey;
 DROP FUNCTION IF EXISTS update_or_insert_users;
 DROP FUNCTION IF EXISTS get_all_routes_by_user;
 DROP FUNCTION IF EXISTS get_route;
-
+DROP FUNCTION IF EXISTS get_recent_ticket_data;
 CREATE OR REPLACE FUNCTION update_or_insert_users( --0 - конфликт на логинах, 1 - значение вставлено, 2 - значение обновлено
     p_users_id INT,
     p_login TEXT,
@@ -48,7 +48,7 @@ CREATE OR REPLACE FUNCTION insert_data_journey( --0 - нет такого пол
 	
     p_frequency_monitoring INT,
     p_start_time_monitoring TIMESTAMP,
-	p_finish_time_monitoring TIMESTAMP,
+    p_finish_time_monitoring TIMESTAMP,
     p_transfers_are_allowed BOOLEAN,
 	
     p_type_of_route_name TEXT,
@@ -188,6 +188,7 @@ RETURNS TABLE(
     frequency_monitoring INT,
     start_time_monitoring TIMESTAMP,
     finish_time_monitoring TIMESTAMP,
+    transfers_are_allowed BOOLEAN,
     start_city TEXT,
     start_iata TEXT,
     finish_city TEXT,
@@ -201,6 +202,7 @@ BEGIN
         rm.frequency_monitoring,
         rm.start_time_monitoring,
         rm.finish_time_monitoring,
+        rm.transfers_are_allowed,
         ls.city_name::text AS start_city,
         ls.IATA_code::text AS start_iata,
         lf.city_name::text AS finish_city,
@@ -213,6 +215,7 @@ BEGIN
 END;
 $$;
 
+
 DROP FUNCTION IF EXISTS get_route;
 CREATE OR REPLACE FUNCTION get_route(
     p_user_id INT,
@@ -223,6 +226,7 @@ RETURNS TABLE(
     frequency_monitoring INT,
     start_time_monitoring TIMESTAMP,
     finish_time_monitoring TIMESTAMP,
+    transfers_are_allowed BOOLEAN,
     start_city TEXT,
     start_iata TEXT,
     finish_city TEXT,
@@ -236,6 +240,7 @@ BEGIN
         rm.frequency_monitoring,
         rm.start_time_monitoring,
         rm.finish_time_monitoring,
+	rm.transfers_are_allowed,
         ls.city_name::text AS start_city,
         ls.IATA_code::text AS start_iata,
         lf.city_name::text AS finish_city,
@@ -247,4 +252,32 @@ BEGIN
     WHERE rm.users_id = p_user_id AND rm.route_monitoring_id = p_route_monitoring_id;
 END;
 $$;
+
+DROP FUNCTION IF EXISTS get_recent_ticket_data;
+CREATE OR REPLACE FUNCTION get_recent_ticket_data(
+	p_route_monitoring_id INT,
+   	p_current_time TIMESTAMP,
+	p_hash_interval_minutes INT
+)RETURNS JSON AS $$
+DECLARE
+	v_time_diff INT;
+	v_last_ticket_data JSON;
+	v_last_time_cheching TIMESTAMP;
+BEGIN
+	SELECT time_of_checking, ticket_data
+	INTO v_last_time_cheching,v_last_ticket_data
+	FROM ticket_data 
+	WHERE route_monitoring_id = p_route_monitoring_id
+	ORDER BY time_of_checking DESC LIMIT 1;
+	
+	IF v_last_ticket_data IS NULL THEN
+		return NULL;
+	END IF;
+	v_time_diff := EXTRACT(EPOCH FROM (p_current_time - v_last_time_cheching))/60;
+	IF v_time_diff>p_hash_interval_minutes THEN
+		v_last_ticket_data:=NULL;
+	END IF;
+	RETURN v_last_ticket_data;
+END;
+$$ LANGUAGE plpgsql;
 
