@@ -1,5 +1,7 @@
 DROP FUNCTION IF EXISTS insert_data_journey;
-DROP FUNCTION IF exists update_or_insert_users;
+DROP FUNCTION IF EXISTS update_or_insert_users;
+DROP FUNCTION IF EXISTS get_all_routes_by_user;
+DROP FUNCTION IF EXISTS get_route;
 
 CREATE OR REPLACE FUNCTION update_or_insert_users( --0 - конфликт на логинах, 1 - значение вставлено, 2 - значение обновлено
     p_users_id INT,
@@ -40,7 +42,8 @@ $$ LANGUAGE plpgsql;
 
 
 
-CREATE OR REPLACE FUNCTION insert_data_journey( --0 - нет такого пользователя, 1 - значение вставлено, 2 - ошибка базы данных
+DROP FUNCTION IF exists insert_data_journey;
+CREATE OR REPLACE FUNCTION insert_data_journey( --0 - нет такого пользователя, 1 - значение вставлено, 2 - значение обновлено, 3 - ошибка базы данных
     p_users_id INT,
 	
     p_frequency_monitoring INT,
@@ -56,8 +59,9 @@ CREATE OR REPLACE FUNCTION insert_data_journey( --0 - нет такого пол
 	p_finish_iata_code TEXT,
 	
 	p_time_of_checking TIMESTAMP,
-	p_ticket_data JSON
-) RETURNS INT AS $$
+	p_ticket_data JSON,
+	p_route_monitoring_id INT DEFAULT NULL
+)RETURNS TABLE(returning_route_monitoring_id INT, status INT) AS $$
 DECLARE
     v_type_of_route_id INT;
 	v_start_location_id INT;
@@ -68,7 +72,10 @@ BEGIN
 	IF NOT EXISTS(
 		SELECT * FROM users WHERE users_id=p_users_id
 	)THEN
-		RETURN 0;
+		returning_route_monitoring_id:=NULL;
+		status:=0;
+		RETURN NEXT;
+		RETURN;
 	END IF;
 	BEGIN
 		SELECT type_of_route_id INTO v_type_of_route_id FROM type_of_route WHERE type_name = p_type_of_route_name;
@@ -102,18 +109,142 @@ BEGIN
 			VALUES (v_type_of_route_id,v_start_location_id,v_finish_location_id)
 			RETURNING route_id INTO v_route_id;
 		END IF;
-	
-		INSERT INTO route_monitoring(users_id,route_id,frequency_monitoring,start_time_monitoring,finish_time_monitoring,transfers_are_allowed)
-		VALUES(p_users_id,v_route_id,p_frequency_monitoring,p_start_time_monitoring,p_finish_time_monitoring,p_transfers_are_allowed)
-		RETURNING route_monitoring_id INTO v_route_monitoring_id;
-	
+
+		IF p_route_monitoring_id IS NULL 
+		THEN
+			INSERT INTO route_monitoring(
+				users_id,
+				route_id,
+				frequency_monitoring,
+				start_time_monitoring,
+				finish_time_monitoring,
+				transfers_are_allowed)
+			VALUES(
+				p_users_id,
+				v_route_id,
+				p_frequency_monitoring,
+				p_start_time_monitoring,
+				p_finish_time_monitoring,
+				p_transfers_are_allowed)
+			RETURNING route_monitoring_id INTO v_route_monitoring_id;
+			returning_route_monitoring_id:=v_route_monitoring_id;
+			status:=1;
+		ELSIF NOT EXISTS (SELECT * FROM route_monitoring WHERE route_monitoring_id = p_route_monitoring_id) THEN
+			INSERT INTO route_monitoring(
+				route_monitoring_id,
+				users_id,
+				route_id,
+				frequency_monitoring,
+				start_time_monitoring,
+				finish_time_monitoring,
+				transfers_are_allowed)
+			VALUES(
+				p_route_monitoring_id,
+				p_users_id,
+				v_route_id,
+				p_frequency_monitoring,
+				p_start_time_monitoring,
+				p_finish_time_monitoring,
+				p_transfers_are_allowed)
+			RETURNING route_monitoring_id INTO v_route_monitoring_id;
+			returning_route_monitoring_id:=v_route_monitoring_id;
+			status:=1;
+		ELSE
+			UPDATE 
+				route_monitoring
+			SET 
+				route_id = v_route_id,
+				frequency_monitoring = p_frequency_monitoring,
+				start_time_monitoring = p_start_time_monitoring,
+				finish_time_monitoring = p_finish_time_monitoring,
+				transfers_are_allowed = p_transfers_are_allowed
+			WHERE route_monitoring_id = p_route_monitoring_id;
+			returning_route_monitoring_id:=p_route_monitoring_id;
+			status:=2;
+			v_route_monitoring_id:=p_route_monitoring_id;
+		END IF;
+		
 		INSERT INTO ticket_data(route_monitoring_id,time_of_checking,ticket_data)
 		VALUES (v_route_monitoring_id,p_time_of_checking, p_ticket_data);
-		return 1;
+		
+		RETURN NEXT;
+		RETURN;
 	EXCEPTION
     	WHEN OTHERS THEN
-			RETURN 2;
+			returning_route_monitoring_id:=NULL;
+			status:=3;
+			RETURN NEXT;
+			RETURN;
 	END;
 END;
 $$ LANGUAGE plpgsql;
+
+DROP FUNCTION IF EXISTS get_all_routes_by_user;
+CREATE OR REPLACE FUNCTION get_all_routes_by_user(
+    p_user_id INT
+)
+RETURNS TABLE(
+    route_monitoring_id INT,
+    frequency_monitoring INT,
+    start_time_monitoring TIMESTAMP,
+    finish_time_monitoring TIMESTAMP,
+    start_city TEXT,
+    start_iata TEXT,
+    finish_city TEXT,
+    finish_iata TEXT
+) 
+LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        rm.route_monitoring_id,
+        rm.frequency_monitoring,
+        rm.start_time_monitoring,
+        rm.finish_time_monitoring,
+        ls.city_name::text AS start_city,
+        ls.IATA_code::text AS start_iata,
+        lf.city_name::text AS finish_city,
+        lf.IATA_code::text AS finish_iata
+    FROM route_monitoring rm
+    JOIN route r ON rm.route_id = r.route_id 
+    JOIN "location" ls ON r.start_location_id = ls.location_id
+    JOIN "location" lf ON r.finish_location_id = lf.location_id 
+    WHERE rm.users_id = p_user_id;
+END;
+$$;
+
+DROP FUNCTION IF EXISTS get_route;
+CREATE OR REPLACE FUNCTION get_route(
+    p_user_id INT,
+	p_route_monitoring_id INT
+)
+RETURNS TABLE(
+    route_monitoring_id INT,
+    frequency_monitoring INT,
+    start_time_monitoring TIMESTAMP,
+    finish_time_monitoring TIMESTAMP,
+    start_city TEXT,
+    start_iata TEXT,
+    finish_city TEXT,
+    finish_iata TEXT
+) 
+LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        rm.route_monitoring_id,
+        rm.frequency_monitoring,
+        rm.start_time_monitoring,
+        rm.finish_time_monitoring,
+        ls.city_name::text AS start_city,
+        ls.IATA_code::text AS start_iata,
+        lf.city_name::text AS finish_city,
+        lf.IATA_code::text AS finish_iata
+    FROM route_monitoring rm
+    JOIN route r ON rm.route_id = r.route_id 
+    JOIN "location" ls ON r.start_location_id = ls.location_id
+    JOIN "location" lf ON r.finish_location_id = lf.location_id 
+    WHERE rm.users_id = p_user_id AND rm.route_monitoring_id = p_route_monitoring_id;
+END;
+$$;
 
