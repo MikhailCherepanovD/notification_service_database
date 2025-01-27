@@ -3,6 +3,9 @@ DROP FUNCTION IF EXISTS update_or_insert_users;
 DROP FUNCTION IF EXISTS get_all_routes_by_user;
 DROP FUNCTION IF EXISTS get_route;
 DROP FUNCTION IF EXISTS get_recent_ticket_data;
+DROP FUNCTION IF EXISTS get_cheapest_ticket_data;
+DROP FUNCTION IF EXISTS get_statistic_ticket_data;
+
 CREATE OR REPLACE FUNCTION update_or_insert_users( --0 - конфликт на логинах, 1 - значение вставлено, 2 - значение обновлено
     p_users_id INT,
     p_login TEXT,
@@ -282,3 +285,66 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP FUNCTION IF EXISTS get_cheapest_ticket_data;
+CREATE OR REPLACE FUNCTION get_cheapest_ticket_data(
+	p_route_monitoring_id INT
+)RETURNS JSON AS $$
+DECLARE
+	returned_value JSON;
+BEGIN
+	SELECT t.ticket_data INTO returned_value
+	FROM ticket_data t
+	WHERE route_monitoring_id = p_route_monitoring_id
+	ORDER BY price DESC LIMIT 1;
+	RETURN returned_value;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP FUNCTION IF EXISTS get_statistic_ticket_data;
+CREATE OR REPLACE FUNCTION get_statistic_ticket_data(
+	p_route_monitoring_id INT,
+	p_current_time TIMESTAMP
+)RETURNS TABLE(
+	ret_time_of_checking TIMESTAMP,
+	ret_ticket_data JSON
+) AS $$
+DECLARE
+	v_frequency_monitoring INT;
+	v_first_time_of_checking TIMESTAMP;
+	v_current_time_loop TIMESTAMP;
+	v_interval_loop_step INTERVAL;
+BEGIN
+	SELECT frequency_monitoring
+	INTO v_frequency_monitoring
+	FROM route_monitoring WHERE route_monitoring_id = p_route_monitoring_id;
+
+	IF v_frequency_monitoring IS NULL THEN
+		RETURN QUERY SELECT NULL::TIMESTAMP, NULL::JSON; 
+	END IF;
+	
+	SELECT time_of_checking
+	INTO v_first_time_of_checking
+	FROM ticket_data
+	WHERE route_monitoring_id = p_route_monitoring_id
+	ORDER BY time_of_checking ASC LIMIT 1;
+
+	IF v_first_time_of_checking IS NULL THEN
+		RETURN QUERY SELECT NULL::TIMESTAMP, NULL::JSON; 
+	END IF;
+
+	v_current_time_loop:=p_current_time;
+	v_interval_loop_step:=(v_frequency_monitoring * INTERVAL '1 minute');
+	WHILE v_current_time_loop >= (v_first_time_of_checking - (v_frequency_monitoring * INTERVAL '1 minute')) LOOP
+		--RAISE NOTICE 'Current time: %', v_current_time_loop;
+		RETURN QUERY
+		SELECT time_of_checking, ticket_data
+		FROM ticket_data
+		WHERE time_of_checking<= v_current_time_loop + (v_interval_loop_step/2)
+		AND time_of_checking >= v_current_time_loop - (v_interval_loop_step/2)
+		ORDER BY time_of_checking ASC LIMIT 1;
+		
+		v_current_time_loop:= v_current_time_loop - v_interval_loop_step;
+	END LOOP;
+	
+END;
+$$ LANGUAGE plpgsql;
