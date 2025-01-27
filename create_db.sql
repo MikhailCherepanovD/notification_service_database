@@ -31,6 +31,7 @@ CREATE TABLE ticket_data(
 	ticket_data_id SERIAL PRIMARY KEY,
 	route_monitoring_id INT,
 	time_of_checking TIMESTAMP,
+	price INT,
 	ticket_data JSON
 );
 
@@ -93,9 +94,4 @@ CREATE INDEX route___start_location_id_idx ON route(start_location_id);
 CREATE INDEX route___finish_location_id_idx ON route(finish_location_id);
 
 CREATE INDEX location___location_id_idx ON location(location_id);
-
-
-
-
-
 

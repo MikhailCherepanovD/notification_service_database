@@ -59,6 +59,7 @@ CREATE OR REPLACE FUNCTION insert_data_journey( --0 - нет такого пол
 	p_finish_iata_code TEXT,
 	
 	p_time_of_checking TIMESTAMP,
+	p_price INT,
 	p_ticket_data JSON,
 	p_route_monitoring_id INT DEFAULT NULL
 )RETURNS TABLE(returning_route_monitoring_id INT, status INT) AS $$
@@ -164,8 +165,8 @@ BEGIN
 			v_route_monitoring_id:=p_route_monitoring_id;
 		END IF;
 		
-		INSERT INTO ticket_data(route_monitoring_id,time_of_checking,ticket_data)
-		VALUES (v_route_monitoring_id,p_time_of_checking, p_ticket_data);
+		INSERT INTO ticket_data(route_monitoring_id, time_of_checking, price, ticket_data)
+		VALUES (v_route_monitoring_id,p_time_of_checking, p_price, p_ticket_data);
 		
 		RETURN NEXT;
 		RETURN;
