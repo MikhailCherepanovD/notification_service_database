@@ -300,6 +300,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 DROP FUNCTION IF EXISTS get_statistic_ticket_data;
 CREATE OR REPLACE FUNCTION get_statistic_ticket_data(
 	p_route_monitoring_id INT,
@@ -339,7 +340,8 @@ BEGIN
 		RETURN QUERY
 		SELECT time_of_checking, ticket_data
 		FROM ticket_data
-		WHERE time_of_checking<= v_current_time_loop + (v_interval_loop_step/2)
+		WHERE route_monitoring_id = p_route_monitoring_id
+		AND time_of_checking<= v_current_time_loop + (v_interval_loop_step/2)
 		AND time_of_checking >= v_current_time_loop - (v_interval_loop_step/2)
 		ORDER BY time_of_checking ASC LIMIT 1;
 		
@@ -348,3 +350,4 @@ BEGIN
 	
 END;
 $$ LANGUAGE plpgsql;
+
