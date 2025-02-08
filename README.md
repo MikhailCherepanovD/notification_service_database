@@ -7,7 +7,6 @@ Notification service database is part of [Flight ticket tracking application](ht
 
 ![](scheme_of_db.png)
 
-## Components
 
 ## Components
 
